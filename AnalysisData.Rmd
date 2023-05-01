@@ -1,0 +1,1109 @@
+---
+title: "Analysis"
+author: "Aung Myo Htut"
+date: "2022-10-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Load Libraries
+```{r}
+pacman::p_load(tidyverse,
+               ggplot2,
+               table1,
+               openxlsx,
+               naniar, 
+               broom, 
+               odds.n.ends,
+               lmtest, 
+               sjPlot,
+               sjmisc,
+               sjlabelled, 
+               stargazer, 
+               gtsummary)
+```
+
+#Load the data
+```{r}
+brfss <- read_csv("brfss.csv", show_col_types = FALSE)
+colnames(brfss)
+```
+
+#Rename Variables
+```{r}
+names(brfss) <- c("heartattack","chd", "stroke","sleepdur","age","sex",
+                  "education","employment","marital","income","alcohol","smoking","phy_act",
+                  "bmi","diabetes","race")
+```
+
+
+#Data Wrangling
+```{r}
+brfss <- brfss %>%
+  mutate(heartattack = case_when(heartattack==1 ~ 1,
+                                 heartattack==2 ~ 0,
+                                 TRUE ~ NA_real_),
+         heartattack = factor(heartattack, 
+                              levels = 0:1,
+                              labels = c("No", "Yes")),
+         chd = case_when(chd == 1 ~ 1,
+                         chd == 2 ~ 0, 
+                         TRUE ~ NA_real_),
+         chd = factor(chd, levels = 0:1,
+                      labels = c("No", "Yes")),
+         stroke = case_when(stroke == 1 ~ 1,
+                            stroke == 2 ~ 0,
+                            TRUE ~ NA_real_),
+         stroke = factor(stroke, levels = 0:1,
+                         labels = c("No", "Yes")),
+         sleepdur = case_when(sleepdur >=7 & sleepdur <=9 ~ 1,
+                              sleepdur <7 ~ 2, 
+                              sleepdur >9 ~ 3,
+                              TRUE ~ NA_real_),
+         sleepdur = factor(sleepdur, levels = 1:3,
+                           labels = c("Normal Sleep", "Short Sleep", "Long Sleep")),
+         age = case_when(age %in% c(1,2,3,4) ~ 1,
+                         age %in% c(5,6,7,8,9) ~ 2,
+                         age %in% c(10,11,12,13) ~ 3,
+                         TRUE ~ NA_real_),
+         age = factor(age, levels = 1:3,
+                      labels = c("<40", "40-64","65+")),
+         sex = case_when(sex==1 ~ 1,
+                         sex==2 ~ 2,
+                         TRUE ~ NA_real_),
+         sex = factor(sex, levels = 1:2,
+                      labels = c("Male", "Female")),
+         race = case_when(race == 1 ~ 1,
+                          race == 2 ~ 2,
+                          race == 4 ~ 3,
+                          race == 5 ~ 4,
+                          race == 3 ~ 5,
+                          TRUE ~ NA_real_),
+         race = factor(race, levels = 1:5,
+                       labels = c("Non-Hispanic White", "Non-Hispanic Black",
+                                  "Non-Hispanic Multiracial", "Hispanic", "Other")),
+         education = case_when(education==1 ~ 1,
+                               education==2 ~ 2,
+                               education==3 ~ 3,
+                               education==4 ~ 4,
+                               TRUE ~ NA_real_),
+         education = factor(education, levels = 1:4,
+                            labels = c("Did not graduate High School", "Graduated High School",
+                                      "Attend College", "Graduated from College")),
+         employment = case_when(employment %in% c(3,4) ~ 1,
+                                employment %in% c(1,2) ~ 2,
+                                employment %in% c(5,6) ~ 3,
+                                employment==7 ~ 4,
+                                employment==8 ~ 5,
+                                TRUE ~ NA_real_),
+         employment = factor(employment, levels = 1:5,
+                             labels = c("Employed", "Unemployed", "Homemaker/student",
+                                        "Retired", "Unable to work")),
+         marital = case_when(marital %in% c(5,6) ~ 1,
+                             marital == 1 ~ 2,
+                             marital %in% c(2,4) ~ 3,
+                             marital == 3 ~ 4,
+                             TRUE ~ NA_real_),
+         marital = factor(marital, levels = 1:4,
+                          labels = c("Unmarried", "Married", "Divorced/Separated","Widowed")),
+         income = case_when(income %in% c(1,2) ~ 1,
+                            income %in% c(3,4) ~ 2,
+                            income == 5 ~ 3,
+                            TRUE ~ NA_real_),
+         income = factor(income, levels = 1:3,
+                         labels = c("<25,000", "25,000-50,000", ">=50,000")),
+         alcohol = case_when (alcohol == 0 ~ 0,
+                              alcohol >=1 & alcohol <= 98999 ~ 1,
+                              TRUE ~ NA_real_),
+                              
+         alcohol = factor(alcohol, levels = 0:1, labels = c("No", "Yes")),
+         smoking = case_when(smoking==4 ~ 1,
+                             smoking==3 ~ 2,
+                             smoking %in% c(1,2) ~ 3,
+                             TRUE ~ NA_real_),
+         smoking = factor(smoking, levels = 1:3,
+                          labels = c("Never","Former", "Current")),
+         phy_act = case_when(phy_act == 1 ~ 1,
+                             phy_act == 2 ~ 0,
+                             TRUE ~ NA_real_),
+         phy_act = factor(phy_act, levels = 0:1, labels = c("No", "Yes")),
+         bmi = case_when(bmi==1 ~ 1,
+                         bmi==2 ~ 2,
+                         bmi==3 ~ 3,
+                         bmi==4 ~ 4,
+                         TRUE ~ NA_real_),
+         bmi = factor(bmi, levels = 1:4, 
+                      labels = c("Underweight", "Normal Weight", "Overweight", "Obese")),
+         diabetes = case_when (diabetes %in% c(1,2) ~ 1,
+                               diabetes %in% c(3,4) ~ 0,
+                               TRUE ~ NA_real_),
+         diabetes = factor(diabetes, levels = 0:1, labels = c("No","Yes")))
+         
+dim(brfss)       
+```
+
+#Labeling Variables
+```{r}
+library(labelled)
+# Assign labels to specific variables
+labelled::var_label(brfss) <-
+  list(heartattack = "Heart Attack",
+       chd = "Angina or Coronary Heart Disease",
+       stroke = "Stroke",
+       sleepdur = "Sleep Duration",
+       age = "Age",
+       sex = "Sex",
+       race = "Race/ethnicity",
+       education = "Education Level",
+       employment = "Employment",
+       marital = "Marital Status",
+       income = "Income",
+       alcohol = "Alcohol Consumption",
+       smoking = "Smoking Status",
+       phy_act = "Physical Activity",
+       bmi = "BMI",
+       diabetes = "Diabetes")
+
+# Create list object for labels
+varLabelList <- 
+  list(heartattack = "Heart Attack",
+       chd = "Angina or Coronary Heart Disease",
+       stroke = "Stroke",
+       age = "Age",
+       sex = "Sex",
+       race = "Race/ethnicity",
+       education = "Education Level",
+       employment = "Employment",
+       marital = "Marital Status",
+       income = "Income",
+       alcohol = "Alcohol Consumption",
+       smoking = "Smoking Status",
+       phy_act = "Physical Activity",
+       bmi = "BMI",
+       diabetes = "Diabetes")
+```
+
+
+#Find Missing Values
+```{r}
+colSums(is.na(brfss))
+```
+#Drop NA Values for complete case analysis
+```{r}
+brfssdf <- brfss%>% drop_na()
+
+#check missing values again
+colSums(is.na(brfssdf))
+
+#dimension of data 
+dim(brfssdf)
+```
+#Check % of data excluded
+```{r}
+100 - nrow(brfssdf)/nrow(brfss) * 100 #only 27% of data were removed
+```
+#Descriptive Statistics
+```{r}
+t1 <- table1 (~ heartattack + chd + stroke + age + sex + race + education+ employment + marital + income + alcohol + smoking + phy_act + bmi + diabetes| sleepdur, 
+              data = brfssdf,
+              overall = "Total")
+t1
+
+#write.xlsx(t1, "table1.xlsx")
+
+t2 <- table1 (~ heartattack + chd + stroke + sleepdur+ age + sex + education+ employment + marital + income + alcohol + smoking + phy_act + bmi + diabetes| race, 
+              data = brfssdf,
+              overall = "Total")
+t2
+#write.xlsx (t2, "table2.xlsx")
+```
+
+#Table 2 associations between CVD and sleep duration
+```{r}
+#Associations between CVD and sleep duraiton
+t1 <- table(brfssdf$heartattack, brfssdf$sleepdur)
+t1
+chisq.test(t1, correct = FALSE)
+
+t2 <- table(brfssdf$chd, brfssdf$sleepdur)
+t2
+chisq.test(t2, correct = FALSE)
+
+t3 <- table(brfssdf$stroke, brfssdf$sleepdur)
+t3
+chisq.test(t3, correct = FALSE)
+```
+
+
+#Table 2 associatoins between race and sleep duration
+```{r}
+t4 <- table(brfssdf$race, brfssdf$sleepdur)
+t4
+chisq.test(t4, correct = FALSE)
+
+t5 <- table(brfssdf$age, brfssdf$race)
+t5
+chisq.test(t5, correct = FALSE)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#Will do forward stepwise regression
+
+#Model0 - Unadjusted Model Overall
+```{r}
+model0_ha <- glm(heartattack~sleepdur, data = brfssdf, family = "binomial")
+tidy(model0_ha, exponentiate = TRUE, conf.int = TRUE)
+
+model0_chd <- glm(chd~sleepdur, data = brfssdf, family = "binomial")
+tidy(model0_chd, exponentiate = TRUE, conf.int = TRUE)
+
+model0_st <- glm (stroke~sleepdur, data = brfssdf, family = "binomial")
+tidy(model0_st, exponentiate = TRUE, conf.int = TRUE)
+```
+
+#Model1 - Adjusted for age, sex - Overall
+```{r}
+model1_ha <- glm (heartattack ~ sleepdur + age + sex , data = brfssdf, family = "binomial")
+tidy(model1_ha, exponentiate = TRUE, conf.int = TRUE)
+
+model1_chd <- glm (chd ~ sleepdur + age + sex , data = brfssdf, family = "binomial")
+tidy(model1_chd, exponentiate = TRUE, conf.int = TRUE)
+
+model1_st <- glm (stroke ~ sleepdur + age + sex , data = brfssdf, family = "binomial")
+tidy(model1_st, exponentiate = TRUE, conf.int = TRUE)
+
+```
+
+
+##Model testing for model 0 and model 1
+```{r}
+lrtest(model0_chd, model1_chd)
+lrtest(model0_ha, model1_ha)
+lrtest(model0_st, model1_st)
+```
+LR test is significant. So, adding variables improves the model fit.
+
+#Model1 _ adjusting for age and sex - White - HA
+```{r}
+model1_ha_white <- glm (heartattack ~ sleepdur + age + sex, data = brfssdf, 
+                        family = "binomial",
+                        subset = race== "Non-Hispanic White")
+tidy(model1_ha, exponentiate = TRUE, conf.int = TRUE)
+```
+
+#Model1 _ adjusting for age and sex - White - CHD
+```{r}
+model1_chd_white <- glm (chd ~ sleepdur + age + sex, data = brfssdf, 
+                        family = "binomial",
+                        subset = race== "Non-Hispanic White")
+tidy(model1_chd_white, exponentiate = TRUE, conf.int = TRUE)
+```
+
+
+#Model1 _ adjusting for age and sex - White - St
+```{r}
+model1_st_white <- glm (stroke ~ sleepdur + age + sex, data = brfssdf, 
+                        family = "binomial",
+                        subset = race== "Non-Hispanic White")
+tidy(model1_st_white, exponentiate = TRUE, conf.int = TRUE)
+```
+
+
+#Model1 _ adjusting for age and sex - Black - HA
+```{r}
+model1_ha_black <- glm (heartattack ~ sleepdur + age + sex, data = brfssdf, 
+                        family = "binomial",
+                        subset = race== "Non-Hispanic Black")
+tidy(model1_ha_black, exponentiate = TRUE, conf.int = TRUE)
+```
+
+#Model1 _ adjusting for age and sex - Black - CHD
+```{r}
+model1_chd_black <- glm (chd ~ sleepdur + age + sex, data = brfssdf, 
+                        family = "binomial",
+                        subset = race== "Non-Hispanic Black")
+tidy(model1_chd_black, exponentiate = TRUE, conf.int = TRUE)
+```
+
+
+#Model1 _ adjusting for age and sex - Black - St
+```{r}
+model1_st_black <- glm (stroke ~ sleepdur + age + sex, data = brfssdf, 
+                        family = "binomial",
+                        subset = race== "Non-Hispanic Black")
+tidy(model1_st_black, exponentiate = TRUE, conf.int = TRUE)
+```
+
+#Model1 _ adjusting for age and sex - Multiracial - HA
+```{r}
+model1_ha_multiracial <- glm (heartattack ~ sleepdur + age + sex, data = brfssdf, 
+                        family = "binomial",
+                        subset = race== "Non-Hispanic Multiracial")
+tidy(model1_ha_multiracial, exponentiate = TRUE, conf.int = TRUE)
+```
+
+#Model1 _ adjusting for age and sex - Multiracial - CHD
+```{r}
+model1_chd_multiracial <- glm (chd ~ sleepdur + age + sex, data = brfssdf, 
+                        family = "binomial",
+                        subset = race== "Non-Hispanic Multiracial")
+tidy(model1_chd_multiracial, exponentiate = TRUE, conf.int = TRUE)
+```
+
+#Model1 _ adjusting for age and sex - Multiracial - St
+```{r}
+model1_st_multiracial <- glm (stroke ~ sleepdur + age + sex, data = brfssdf, 
+                        family = "binomial",
+                        subset = race== "Non-Hispanic Multiracial")
+tidy(model1_st_multiracial, exponentiate = TRUE, conf.int = TRUE)
+```
+
+#Model1 _ adjusting for age and sex - Hispanic - HA
+```{r}
+model1_ha_hispanic <- glm (heartattack ~ sleepdur + age + sex, data = brfssdf, 
+                        family = "binomial",
+                        subset = race== "Hispanic")
+tidy(model1_ha_hispanic, exponentiate = TRUE, conf.int = TRUE)
+```
+
+#Model1 _ adjusting for age and sex - Hispanic - CHD
+```{r}
+model1_chd_hispanic <- glm (chd ~ sleepdur + age + sex, data = brfssdf, 
+                        family = "binomial",
+                        subset = race== "Hispanic")
+tidy(model1_chd_hispanic, exponentiate = TRUE, conf.int = TRUE)
+```
+
+#Model1 _ adjusting for age and sex - Hispanic - St
+```{r}
+model1_st_hispanic <- glm (stroke ~ sleepdur + age + sex, data = brfssdf, 
+                        family = "binomial",
+                        subset = race== "Hispanic")
+tidy(model1_st_hispanic, exponentiate = TRUE, conf.int = TRUE)
+```
+
+#Model1 _ adjusting for age and sex - Other-HA
+```{r}
+model1_ha_other <- glm (heartattack ~ sleepdur + age + sex, data = brfssdf, 
+                        family = "binomial",
+                        subset = race== "Other")
+tidy(model1_ha_other, exponentiate = TRUE, conf.int = TRUE)
+```
+
+#Model1 _ adjusting for age and sex - Other-CHD
+```{r}
+model1_chd_other <- glm (chd ~ sleepdur + age + sex, data = brfssdf, 
+                        family = "binomial",
+                        subset = race== "Other")
+tidy(model1_chd_other, exponentiate = TRUE, conf.int = TRUE)
+```
+
+#Model1 _ adjusting for age and sex - Other-St
+```{r}
+model1_st_other <- glm (stroke ~ sleepdur + age + sex, data = brfssdf, 
+                        family = "binomial",
+                        subset = race== "Other")
+tidy(model1_st_other, exponentiate = TRUE, conf.int = TRUE)
+```
+
+
+
+#Model2 adjusting for income, education, employment, marital status
+```{r}
+model2_ha <- glm(heartattack~sleepdur+age+sex+education+employment+income+marital,
+                 data = brfssdf, family = "binomial")
+tidy(model2_ha, exponentiate = TRUE, conf.int = TRUE)
+
+model2_chd <- glm(chd~sleepdur+age+sex+education+employment+income+marital,
+                 data = brfssdf, family = "binomial")
+tidy(model2_chd, exponentiate = TRUE, conf.int = TRUE)
+
+model2_st <- glm(stroke~sleepdur+age+sex+education+employment+income+marital,
+                 data = brfssdf, family = "binomial")
+tidy(model2_st, exponentiate = TRUE, conf.int = TRUE)
+
+```
+
+#Model testing between Model 1 & Model 2
+```{r}
+lrtest (model1_ha, model2_ha)
+lrtest (model1_chd, model2_chd)
+lrtest (model1_st, model2_st)
+```
+Adding education, employment, income and marital status improves the model fit.
+
+#Model2 adjusting for income, education, employment, marital status - White - HA
+```{r}
+model2_ha_white <- glm(heartattack~sleepdur+age+sex+education+employment+income+marital,
+                 data = brfssdf, family = "binomial", subset = race== "Non-Hispanic White")
+tidy(model2_ha_white, exponentiate = TRUE, conf.int = TRUE)
+```
+
+
+#Model2 adjusting for income, education, employment, marital status - White - CHD
+```{r}
+model2_chd_white <- glm(chd~sleepdur+age+sex+education+employment+income+marital,
+                 data = brfssdf, family = "binomial", subset = race== "Non-Hispanic White")
+tidy(model2_chd_white, exponentiate = TRUE, conf.int = TRUE)
+```
+
+
+#Model2 adjusting for income, education, employment, marital status - White - ST
+```{r}
+model2_st_white <- glm(stroke~sleepdur+age+sex+education+employment+income+marital,
+                 data = brfssdf, family = "binomial", subset = race== "Non-Hispanic White")
+tidy(model2_st_white, exponentiate = TRUE, conf.int = TRUE)
+```
+
+
+#Model2 adjusting for income, education, employment, marital status - Black - HA
+```{r}
+model2_ha_black <- glm(heartattack~sleepdur+age+sex+education+employment+income+marital,
+                 data = brfssdf, family = "binomial", subset = race== "Non-Hispanic Black")
+tidy(model2_ha_black, exponentiate = TRUE, conf.int = TRUE)
+```
+
+#Model2 adjusting for income, education, employment, marital status - Black - CHD
+```{r}
+model2_chd_black <- glm(chd~sleepdur+age+sex+education+employment+income+marital,
+                 data = brfssdf, family = "binomial", subset = race== "Non-Hispanic Black")
+tidy(model2_chd_black, exponentiate = TRUE, conf.int = TRUE)
+```
+
+#Model2 adjusting for income, education, employment, marital status - Black - St
+```{r}
+model2_st_black <- glm(stroke~sleepdur+age+sex+education+employment+income+marital,
+                 data = brfssdf, family = "binomial", subset = race== "Non-Hispanic Black")
+tidy(model2_st_black, exponentiate = TRUE, conf.int = TRUE)
+```
+
+#Model2 adjusting for income, education, employment, marital status - Multiracial - HA
+```{r}
+model2_ha_multiracial <- glm(heartattack~sleepdur+age+sex+education+employment+income+marital,
+                 data = brfssdf, family = "binomial", subset = race== "Non-Hispanic Multiracial")
+tidy(model2_ha_multiracial, exponentiate = TRUE, conf.int = TRUE)
+```
+
+#Model2 adjusting for income, education, employment, marital status - Multiracial - CHD
+```{r}
+model2_chd_multiracial <- glm(chd~sleepdur+age+sex+education+employment+income+marital,
+                 data = brfssdf, family = "binomial", subset = race== "Non-Hispanic Multiracial")
+tidy(model2_chd_multiracial, exponentiate = TRUE, conf.int = TRUE)
+```
+
+#Model2 adjusting for income, education, employment, marital status - Multiracial - St
+```{r}
+model2_st_multiracial <- glm(stroke~sleepdur+age+sex+education+employment+income+marital,
+                 data = brfssdf, family = "binomial", subset = race== "Non-Hispanic Multiracial")
+tidy(model2_st_multiracial, exponentiate = TRUE, conf.int = TRUE)
+```
+
+#Model2 adjusting for income, education, employment, marital status - Hispanic - HA
+```{r}
+model2_ha_hispanic <- glm(heartattack~sleepdur+age+sex+education+employment+income+marital,
+                 data = brfssdf, family = "binomial", subset = race== "Hispanic")
+tidy(model2_ha_hispanic, exponentiate = TRUE, conf.int = TRUE)
+```
+
+#Model2 adjusting for income, education, employment, marital status - Hispanic - CHD
+```{r}
+model2_chd_hispanic <- glm(chd~sleepdur+age+sex+education+employment+income+marital,
+                 data = brfssdf, family = "binomial", subset = race== "Hispanic")
+tidy(model2_chd_hispanic, exponentiate = TRUE, conf.int = TRUE)
+```
+
+#Model2 adjusting for income, education, employment, marital status - Hispanic - St
+```{r}
+model2_st_hispanic <- glm(stroke~sleepdur+age+sex+education+employment+income+marital,
+                 data = brfssdf, family = "binomial", subset = race== "Hispanic")
+tidy(model2_st_hispanic, exponentiate = TRUE, conf.int = TRUE)
+```
+
+#Model2 adjusting for income, education, employment, marital status - Other - HA
+```{r}
+model2_ha_other <- glm(heartattack~sleepdur+age+sex+education+employment+income+marital,
+                 data = brfssdf, family = "binomial", subset = race== "Other")
+tidy(model2_ha_other, exponentiate = TRUE, conf.int = TRUE)
+```
+
+#Model2 adjusting for income, education, employment, marital status - Other - CHD
+```{r}
+model2_chd_other <- glm(chd~sleepdur+age+sex+education+employment+income+marital,
+                 data = brfssdf, family = "binomial", subset = race== "Other")
+tidy(model2_chd_other, exponentiate = TRUE, conf.int = TRUE)
+```
+
+#Model2 adjusting for income, education, employment, marital status - Other - St
+```{r}
+model2_st_other <- glm(stroke~sleepdur+age+sex+education+employment+income+marital,
+                 data = brfssdf, family = "binomial", subset = race== "Other")
+tidy(model2_st_other, exponentiate = TRUE, conf.int = TRUE)
+```
+
+
+
+#Model3 adjusting for smoking, alcohol, physical activity, bmi & DM
+```{r}
+model3_ha <- glm (heartattack~sleepdur + age+sex+race+education+employment+income+marital+
+                    smoking+alcohol+phy_act+diabetes + bmi, data = brfssdf, family = "binomial")
+summary (model3_ha)
+tidy(model3_ha, exponentiate = TRUE, conf.int = TRUE) %>% select(-statistic)
+
+model3_chd <- glm (chd~sleepdur + age+sex+race+education+employment+income+marital+
+                    smoking+alcohol+phy_act+diabetes + bmi, data = brfssdf, family = "binomial")
+summary(model3_chd)
+tidy(model3_chd, exponentiate = TRUE, conf.int = TRUE) %>% select(-statistic)
+
+model3_st <- glm (stroke~sleepdur + age+sex+race+education+employment+income+marital+
+                    smoking+alcohol+phy_act+diabetes + bmi, data = brfssdf, family = "binomial")
+summary(model3_st)
+tidy(model3_st, exponentiate = TRUE, conf.int = TRUE) %>% select(-statistic)
+```
+##Model testing between model 2 and model3
+```{r}
+lrtest(model2_chd, model3_chd)
+lrtest(model2_ha, model3_ha)
+lrtest(model2_st, model3_st)
+```
+
+LR test is significant. Adding additional variables improves the model fit.
+
+#Model3 adjusting for smoking, alcohol, physical activity, bmi & DM - White - HA
+```{r}
+model3_ha_white <- glm (heartattack~sleepdur + age+sex+ education+employment+income+marital+
+                    smoking+alcohol+phy_act+diabetes + bmi, data = brfssdf, family = "binomial",
+                    subset = race == "Non-Hispanic White")
+tidy(model3_ha_white, exponentiate = TRUE, conf.int = TRUE) %>% select(-statistic)
+```
+
+#Model3 adjusting for smoking, alcohol, physical activity, bmi & DM - White - CHD
+```{r}
+model3_chd_white <- glm (chd~sleepdur + age+sex+ education+employment+income+marital+
+                    smoking+alcohol+phy_act+diabetes + bmi, data = brfssdf, family = "binomial",
+                    subset = race == "Non-Hispanic White")
+tidy(model3_chd_white, exponentiate = TRUE, conf.int = TRUE) %>% select(-statistic)
+```
+
+#Model3 adjusting for smoking, alcohol, physical activity, bmi & DM - White - St
+```{r}
+model3_st_white <- glm (stroke~sleepdur + age+sex+education+employment+income+marital+
+                    smoking+alcohol+phy_act+diabetes + bmi, data = brfssdf, family = "binomial",
+                    subset = race == "Non-Hispanic White")
+tidy(model3_st_white, exponentiate = TRUE, conf.int = TRUE) %>% select(-statistic)
+```
+
+#Model3 adjusting for smoking, alcohol, physical activity, bmi & DM - Black - HA
+```{r}
+model3_ha_black <- glm (heartattack~sleepdur + age+sex+education+employment+income+marital+
+                    smoking+alcohol+phy_act+diabetes + bmi, data = brfssdf, family = "binomial",
+                    subset = race == "Non-Hispanic Black")
+tidy(model3_ha_black, exponentiate = TRUE, conf.int = TRUE) %>% select(-statistic)
+```
+
+#Model3 adjusting for smoking, alcohol, physical activity, bmi & DM - Black - CHD
+```{r}
+model3_chd_black <- glm (chd~sleepdur + age+sex+ education+employment+income+marital+
+                    smoking+alcohol+phy_act+diabetes + bmi, data = brfssdf, family = "binomial",
+                    subset = race == "Non-Hispanic Black")
+tidy(model3_chd_black, exponentiate = TRUE, conf.int = TRUE) %>% select(-statistic)
+```
+
+#Model3 adjusting for smoking, alcohol, physical activity, bmi & DM - Black - St
+```{r}
+model3_st_black <- glm (stroke~sleepdur + age+sex+education+employment+income+marital+
+                    smoking+alcohol+phy_act+diabetes + bmi, data = brfssdf, family = "binomial",
+                    subset = race == "Non-Hispanic Black")
+tidy(model3_st_black, exponentiate = TRUE, conf.int = TRUE) %>% select(-statistic)
+```
+
+#Model3 adjusting for smoking, alcohol, physical activity, bmi & DM - Multiracial - HA
+```{r}
+model3_ha_multiracial <- glm (heartattack~sleepdur + age+sex+education+employment+income+marital+
+                    smoking+alcohol+phy_act+diabetes + bmi, data = brfssdf, family = "binomial",
+                    subset = race == "Non-Hispanic Multiracial")
+tidy(model3_ha_multiracial, exponentiate = TRUE, conf.int = TRUE) %>% select(-statistic)
+```
+
+#Model3 adjusting for smoking, alcohol, physical activity, bmi & DM - Multiracial - CHD
+```{r}
+model3_chd_multiracial <- glm (chd~sleepdur + age+sex+education+employment+income+marital+
+                    smoking+alcohol+phy_act+diabetes + bmi, data = brfssdf, family = "binomial",
+                    subset = race == "Non-Hispanic Multiracial")
+tidy(model3_chd_multiracial, exponentiate = TRUE, conf.int = TRUE) %>% select(-statistic)
+```
+
+#Model3 adjusting for smoking, alcohol, physical activity, bmi & DM - Multiracial - St
+```{r}
+model3_st_multiracial <- glm (stroke~sleepdur + age+sex+education+employment+income+marital+
+                    smoking+alcohol+phy_act+diabetes + bmi, data = brfssdf, family = "binomial",
+                    subset = race == "Non-Hispanic Multiracial")
+tidy(model3_st_multiracial, exponentiate = TRUE, conf.int = TRUE) %>% select(-statistic)
+```
+
+#Model3 adjusting for smoking, alcohol, physical activity, bmi & DM - Hispanic - HA
+```{r}
+model3_ha_hispanic <- glm (heartattack~sleepdur + age+sex+education+employment+income+marital+
+                    smoking+alcohol+phy_act+diabetes + bmi, data = brfssdf, family = "binomial",
+                    subset = race == "Hispanic")
+tidy(model3_ha_hispanic, exponentiate = TRUE, conf.int = TRUE) %>% select(-statistic)
+```
+
+#Model3 adjusting for smoking, alcohol, physical activity, bmi & DM - Hispanic - CHD
+```{r}
+model3_chd_hispanic <- glm (chd~sleepdur + age+sex+education+employment+income+marital+
+                    smoking+alcohol+phy_act+diabetes + bmi, data = brfssdf, family = "binomial",
+                    subset = race == "Hispanic")
+tidy(model3_chd_hispanic, exponentiate = TRUE, conf.int = TRUE) %>% select(-statistic)
+```
+
+#Model3 adjusting for smoking, alcohol, physical activity, bmi & DM - Hispanic - St
+```{r}
+model3_st_hispanic <- glm (stroke~sleepdur + age+sex+education+employment+income+marital+
+                    smoking+alcohol+phy_act+diabetes + bmi, data = brfssdf, family = "binomial",
+                    subset = race == "Hispanic")
+tidy(model3_st_hispanic, exponentiate = TRUE, conf.int = TRUE) %>% select(-statistic)
+```
+
+#Model3 adjusting for smoking, alcohol, physical activity, bmi & DM - Other - HA
+```{r}
+model3_ha_other <- glm (heartattack~sleepdur + age+sex+education+employment+income+marital+
+                    smoking+alcohol+phy_act+diabetes + bmi, data = brfssdf, family = "binomial",
+                    subset = race == "Other")
+tidy(model3_ha_other, exponentiate = TRUE, conf.int = TRUE) %>% select(-statistic)
+```
+
+#Model3 adjusting for smoking, alcohol, physical activity, bmi & DM - Other - CHD
+```{r}
+model3_chd_other <- glm (chd~sleepdur + age+sex+education+employment+income+marital+
+                    smoking+alcohol+phy_act+diabetes + bmi, data = brfssdf, family = "binomial",
+                    subset = race == "Other")
+tidy(model3_chd_other, exponentiate = TRUE, conf.int = TRUE) %>% select(-statistic)
+```
+
+#Model3 adjusting for smoking, alcohol, physical activity, bmi & DM - Other - St
+```{r}
+model3_st_other <- glm (stroke~sleepdur + age+sex+education+employment+income+marital+
+                    smoking+alcohol+phy_act+diabetes + bmi, data = brfssdf, family = "binomial",
+                    subset = race == "Other")
+tidy(model3_st_other, exponentiate = TRUE, conf.int = TRUE) %>% select(-statistic)
+```
+
+
+
+#Testing Effect Modification in Model3_in
+```{r}
+model3_ha_in <- glm (heartattack~sleepdur+age+sex+race+education+employment+income+marital+
+                    smoking+alcohol+phy_act+diabetes + bmi +sleepdur*race,
+                    data = brfssdf, family = "binomial")
+summary(model3_ha_in)
+tidy(model3_ha_in, exponentiate = TRUE, conf.int = TRUE) %>% select(-statistic)
+
+model3_chd_in <- glm (chd~sleepdur + age+sex+race+education+employment+income+marital+
+                    smoking+alcohol+phy_act+diabetes + bmi+ sleepdur*race,
+                   data = brfssdf, family = "binomial")
+summary(model3_chd_in)
+tidy(model3_chd_in, exponentiate = TRUE, conf.int = TRUE) %>% select(-statistic)
+
+model3_st_in <- glm (stroke~sleepdur + age+sex+race+education+employment+income+marital+
+                    smoking+alcohol+phy_act+diabetes + bmi + sleepdur*race,
+                  data = brfssdf, family = "binomial")
+summary(model3_st_in)
+tidy(model3_st_in, exponentiate = TRUE, conf.int = TRUE) %>% select(-statistic)
+```
+
+##Model testing between model 3 and model 3 interaction
+```{r}
+lrtest(model3_ha, model3_ha_in)
+lrtest(model3_chd, model3_chd_in)
+lrtest(model3_st, model3_st_in)
+
+```
+
+#The interaction term is significant only for CHD, so the next step is to run models stratified by race in CHD
+```{r}
+#NH White
+white <- glm (chd~ sleepdur+age+sex+ education+ employment+ income+ marital+
+                 smoking+ alcohol+ phy_act+ diabetes + bmi,
+               data = brfssdf,
+              family = "binomial",
+              subset = race == "Non-Hispanic White")
+               
+#NH Black
+black <- glm (chd~ sleepdur+age+sex+education+ employment+ income+ marital+
+                 smoking+ alcohol+ phy_act+ diabetes + bmi,
+               data = brfssdf,
+               family = binomial (link = "logit"),
+               subset = race == "Non-Hispanic Black")
+
+#NH Multiracial
+multiracial <- glm (chd~ sleepdur+age+sex+ education+ employment+ income+ marital+
+                 smoking+ alcohol+ phy_act+ diabetes + bmi,
+               data = brfssdf,
+               family = binomial (link = "logit"),
+               subset = race == "Non-Hispanic Multiracial")
+
+#Hispanic
+hispanic <- glm (chd~ sleepdur+age+sex+ education+ employment+ income+ marital+
+                 smoking+ alcohol+ phy_act+ diabetes + bmi,
+               data = brfssdf,
+               family = binomial (link = "logit"),
+               subset = race == "Hispanic")
+
+#Other
+other <- glm (chd~ sleepdur+age+sex+ education+ employment+ income+ marital+
+                 smoking+ alcohol+ phy_act+ diabetes + bmi,
+               data = brfssdf,
+               family = binomial (link = "logit"),
+               subset = race == "Other")
+```
+
+
+#95% CI for white
+```{r}
+tidy(white, exponentiate = TRUE, conf.int = TRUE) %>% select (-statistic)
+```
+
+#95% CI for Black
+```{r}
+tidy(black, exponentiate = TRUE, conf.int = TRUE) %>% select (-statistic)
+```
+
+#95% CI for multiracial
+```{r}
+tidy(multiracial, exponentiate = TRUE, conf.int = TRUE) %>% select (-statistic)
+```
+
+#95% CI for hispanic
+```{r}
+tidy(hispanic, exponentiate = TRUE, conf.int = TRUE) %>% select (-statistic)
+```
+
+#95% CI for other
+```{r}
+tidy(other, exponentiate = TRUE, conf.int = TRUE) %>% select (-statistic)
+```
+#Model0_Sleep Only Model for NH White - CHD
+```{r}
+#White Sleep Only
+model0_chd_white <- glm (chd~ sleepdur,
+               data = brfssdf,
+              family = "binomial",
+              subset = race == "Non-Hispanic White")
+tidy(model0_chd_white, exponentiate = TRUE, conf.int = TRUE) %>% select (-statistic)
+```
+#Model0_Sleep Only Model for NH-White - Heart Attack
+```{r}
+model0_ha_white <- glm (heartattack~ sleepdur,
+               data = brfssdf,
+              family = "binomial",
+              subset = race == "Non-Hispanic White")
+tidy(model0_ha_white, exponentiate = TRUE, conf.int = TRUE) %>% select (-statistic)
+```
+
+#Model0_Sleep Only Model for NH-White - Stroke
+```{r}
+model0_st_white <- glm (stroke~ sleepdur,
+               data = brfssdf,
+              family = "binomial",
+              subset = race == "Non-Hispanic White")
+tidy(model0_st_white, exponentiate = TRUE, conf.int = TRUE) %>% select (-statistic)
+```
+
+
+#Model0_Sleep Only Model for NH-Black - CHD
+```{r}
+model0_chd_black <- glm (chd~ sleepdur,
+               data = brfssdf,
+              family = "binomial",
+              subset = race == "Non-Hispanic Black")
+tidy(model0_chd_black, exponentiate = TRUE, conf.int = TRUE) %>% select (-statistic)
+```
+#Model0_Sleep Only Model for NH-Black - Heart Attack
+```{r}
+model0_ha_black <- glm (heartattack~ sleepdur,
+               data = brfssdf,
+              family = "binomial",
+              subset = race == "Non-Hispanic Black")
+tidy(model0_ha_black, exponentiate = TRUE, conf.int = TRUE) %>% select (-statistic)
+```
+
+#Model0_Sleep only model for NH-Black - Stroke
+```{r}
+model0_st_black <- glm (stroke~ sleepdur,
+               data = brfssdf,
+              family = "binomial",
+              subset = race == "Non-Hispanic Black")
+tidy(model0_st_black, exponentiate = TRUE, conf.int = TRUE) %>% select (-statistic)
+```
+
+
+#Model0_Sleep only Model for NH-Multiracial - CHD
+```{r}
+model0_chd_multiracial <- glm(chd~sleepdur,
+                         data = brfssdf,
+                         family = "binomial",
+                         subset = race == "Non-Hispanic Multiracial")
+tidy(model0_chd_multiracial, exponentiate = TRUE, conf.int = TRUE) %>% select (-statistic)
+```
+
+#Model0_Sleep only model for multiracial - Heart Attack
+```{r}
+model0_ha_multiracial <- glm(heartattack~sleepdur,
+                         data = brfssdf,
+                         family = "binomial",
+                         subset = race == "Non-Hispanic Multiracial")
+tidy(model0_ha_multiracial, exponentiate = TRUE, conf.int = TRUE) %>% select (-statistic)
+```
+
+#Model0_Sleep only model for multiracial - Stroke
+```{r}
+model0_st_multiracial <- glm(stroke~sleepdur,
+                         data = brfssdf,
+                         family = "binomial",
+                         subset = race == "Non-Hispanic Multiracial")
+tidy(model0_st_multiracial, exponentiate = TRUE, conf.int = TRUE) %>% select (-statistic)
+```
+
+
+#Model0_Sleep Only Model for Hispanic - CHD
+```{r}
+model0_chd_hispanic <- glm(chd~sleepdur,
+                         data = brfssdf,
+                         family = "binomial",
+                         subset = race == "Hispanic")
+tidy(hispanic_sleep, exponentiate = TRUE, conf.int = TRUE) %>% select (-statistic)
+```
+
+#Model0_Sleep only model for Hispanic - Heart Attack
+```{r}
+model0_ha_hispanic <- glm(heartattack~sleepdur,
+                         data = brfssdf,
+                         family = "binomial",
+                         subset = race == "Hispanic")
+tidy(model0_ha_hispanic, exponentiate = TRUE, conf.int = TRUE) %>% select (-statistic)
+```
+
+#Model0_Sleep only model for Hispanic-Stroke
+```{r}
+model0_st_hispanic <- glm(stroke~sleepdur,
+                         data = brfssdf,
+                         family = "binomial",
+                         subset = race == "Hispanic")
+tidy(model0_st_hispanic, exponentiate = TRUE, conf.int = TRUE) %>% select (-statistic)
+```
+
+
+#Model0_Sleep Only Model for Other - CHD
+```{r}
+model0_chd_other <- glm(chd~sleepdur,
+                         data = brfssdf,
+                         family = "binomial",
+                         subset = race == "Other")
+tidy(model0_chd_other, exponentiate = TRUE, conf.int = TRUE) %>% select (-statistic)
+```
+
+#model0_sleep only model other-heart attack
+```{r}
+model0_ha_other <- glm(heartattack~sleepdur,
+                         data = brfssdf,
+                         family = "binomial",
+                         subset = race == "Other")
+tidy(model0_ha_other, exponentiate = TRUE, conf.int = TRUE) %>% select (-statistic)
+```
+
+#Model0_Sleep only model other - stroke
+```{r}
+model0_st_other <- glm(stroke~sleepdur,
+                         data = brfssdf,
+                         family = "binomial",
+                         subset = race == "Other")
+tidy(model0_st_other, exponentiate = TRUE, conf.int = TRUE) %>% select (-statistic)
+```
+
+
+#Combining regression results for model 0 - Overall
+```{r}
+tab_model(model0_ha, model0_chd, model0_st, show.ci = 0.95, p.val = "wald",
+          p.style = "stars", show.p = TRUE, 
+          dv.labels = c("Heart Attack", "CHD", "Stroke"),
+          show.reflvl = FALSE, show.stat = FALSE)
+```
+
+#Combining regression results for model 1 - Overall
+```{r}
+tab_model(model1_ha, model1_chd, model1_st, show.ci = 0.95, p.val = "wald",
+          p.style = "stars", show.p = TRUE, 
+          dv.labels = c("Heart Attack", "CHD", "Stroke"),
+          show.reflvl = FALSE, show.stat = FALSE)
+```
+
+#Combining regression results for model 2 - Overall
+```{r}
+tab_model(model2_ha, model2_chd, model2_st, show.ci = 0.95, p.val = "wald",
+          p.style = "stars", show.p = TRUE, 
+          dv.labels = c("Heart Attack", "CHD", "Stroke"),
+          show.reflvl = FALSE, show.stat = FALSE)
+```
+
+#Combining regression results for model 3 - Overall
+```{r}
+tab_model(model3_ha, model3_chd, model3_st, show.ci = 0.95, p.val = "wald",
+          p.style = "stars", show.p = TRUE, 
+          dv.labels = c("Heart Attack", "CHD", "Stroke"),
+          show.reflvl = FALSE, show.stat = FALSE)
+```
+
+#Combining regression results for model 3_interaction
+```{r}
+tab_model(model3_ha_in, model3_chd_in, model3_st_in, show.ci = 0.95, p.val = "wald",
+          p.style = "stars", show.p = TRUE, 
+          dv.labels = c("Heart Attack", "CHD", "Stroke"),
+          show.reflvl = FALSE, show.stat = FALSE)
+```
+
+#Combining regression results for race_stratified models
+```{r}
+tab_model(white, black, multiracial, hispanic, other, show.ci = 0.95, p.val = "wald",
+          p.style = "stars", show.p = TRUE, 
+          dv.labels = c("White", "Black", "Multiracial", "Hispanic", "Other"),
+          show.reflvl = FALSE, show.stat = FALSE)
+```
+
+#Combining regression results model1 - White - HA, CHD, St
+```{r}
+tab_model(model1_ha_white, model1_chd_white, model1_st_white, show.ci = 0.95, p.val = "wald",
+          p.style = "stars", show.p = TRUE, 
+          dv.labels = c("Heart Attack", "CHD", "Stroke"),
+          show.reflvl = FALSE, show.stat = FALSE)
+```
+
+#Combining regression results model1 - Black - HA, CHD, St
+```{r}
+tab_model(model1_ha_black, model1_chd_black, model1_st_black, show.ci = 0.95, p.val = "wald",
+          p.style = "stars", show.p = TRUE, 
+          dv.labels = c("Heart Attack", "CHD", "Stroke"),
+          show.reflvl = FALSE, show.stat = FALSE)
+```
+
+#Combining regression results model1 - Multiracial - HA, CHD, St
+```{r}
+tab_model(model1_ha_multiracial, model1_chd_multiracial, model1_st_multiracial, show.ci = 0.95, p.val = "wald",
+          p.style = "stars", show.p = TRUE, 
+          dv.labels = c("Heart Attack", "CHD", "Stroke"),
+          show.reflvl = FALSE, show.stat = FALSE)
+```
+
+#Combining regression results model1 - Hispanic - HA, CHD, St
+```{r}
+tab_model(model1_ha_hispanic, model1_chd_hispanic, model1_st_hispanic, show.ci = 0.95, p.val = "wald",
+          p.style = "stars", show.p = TRUE, 
+          dv.labels = c("Heart Attack", "CHD", "Stroke"),
+          show.reflvl = FALSE, show.stat = FALSE)
+```
+
+#Combining regression results model1 - Other - HA, CHD, St
+```{r}
+tab_model(model1_ha_other, model1_chd_other, model1_st_other, show.ci = 0.95, p.val = "wald",
+          p.style = "stars", show.p = TRUE, 
+          dv.labels = c("Heart Attack", "CHD", "Stroke"),
+          show.reflvl = FALSE, show.stat = FALSE)
+```
+
+#Combining regression results model2 - White - HA, CHD, St
+```{r}
+tab_model(model2_ha_white, model2_chd_white, model2_st_white, show.ci = 0.95, p.val = "wald",
+          p.style = "stars", show.p = TRUE, 
+          dv.labels = c("Heart Attack", "CHD", "Stroke"),
+          show.reflvl = FALSE, show.stat = FALSE)
+```
+
+#Combining regression results model2 - Black - HA, CHD, St
+```{r}
+tab_model(model2_ha_black, model2_chd_black, model2_st_black, show.ci = 0.95, p.val = "wald",
+          p.style = "stars", show.p = TRUE, 
+          dv.labels = c("Heart Attack", "CHD", "Stroke"),
+          show.reflvl = FALSE, show.stat = FALSE)
+```
+
+#Combining regression results model2 - Multiracial - HA, CHD, St
+```{r}
+tab_model(model2_ha_multiracial, model2_chd_multiracial, model2_st_multiracial, show.ci = 0.95, p.val = "wald",
+          p.style = "stars", show.p = TRUE, 
+          dv.labels = c("Heart Attack", "CHD", "Stroke"),
+          show.reflvl = FALSE, show.stat = FALSE)
+```
+
+#Combining regression results model2 - Hispanic - HA, CHD, St
+```{r}
+tab_model(model2_ha_hispanic, model2_chd_hispanic, model2_st_hispanic, show.ci = 0.95, p.val = "wald",
+          p.style = "stars", show.p = TRUE, 
+          dv.labels = c("Heart Attack", "CHD", "Stroke"),
+          show.reflvl = FALSE, show.stat = FALSE)
+```
+
+#Combining regression results model2 - Other - HA, CHD, St
+```{r}
+tab_model(model2_ha_other, model2_chd_other, model2_st_other, show.ci = 0.95, p.val = "wald",
+          p.style = "stars", show.p = TRUE, 
+          dv.labels = c("Heart Attack", "CHD", "Stroke"),
+          show.reflvl = FALSE, show.stat = FALSE)
+```
+
+#Combining regression results model3 - White - HA, CHD, St
+```{r}
+tab_model(model3_ha_white, model3_chd_white, model3_st_white, show.ci = 0.95, p.val = "wald",
+          p.style = "stars", show.p = TRUE, 
+          dv.labels = c("Heart Attack", "CHD", "Stroke"),
+          show.reflvl = FALSE, show.stat = FALSE)
+```
+
+#Combining regression results model3 - Black - HA, CHD, St
+```{r}
+tab_model(model3_ha_black, model3_chd_black, model3_st_black, show.ci = 0.95, p.val = "wald",
+          p.style = "stars", show.p = TRUE, 
+          dv.labels = c("Heart Attack", "CHD", "Stroke"),
+          show.reflvl = FALSE, show.stat = FALSE)
+```
+
+#Combining regression results model3 - Multiracial - HA, CHD, St
+```{r}
+tab_model(model3_ha_multiracial, model3_chd_multiracial, model3_st_multiracial, show.ci = 0.95, p.val = "wald",
+          p.style = "stars", show.p = TRUE, 
+          dv.labels = c("Heart Attack", "CHD", "Stroke"),
+          show.reflvl = FALSE, show.stat = FALSE)
+```
+
+#Combining regression results model3 - Hispanic - HA, CHD, St
+```{r}
+tab_model(model3_ha_hispanic, model3_chd_hispanic, model3_st_hispanic, show.ci = 0.95, p.val = "wald",
+          p.style = "stars", show.p = TRUE, 
+          dv.labels = c("Heart Attack", "CHD", "Stroke"),
+          show.reflvl = FALSE, show.stat = FALSE)
+```
+
+#Combining regression results model3 - Other - HA, CHD, St
+```{r}
+tab_model(model3_ha_other, model3_chd_other, model3_st_other, show.ci = 0.95, p.val = "wald",
+          p.style = "stars", show.p = TRUE, 
+          dv.labels = c("Heart Attack", "CHD", "Stroke"),
+          show.reflvl = FALSE, show.stat = FALSE)
+```
